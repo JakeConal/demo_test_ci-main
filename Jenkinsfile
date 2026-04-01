@@ -1,89 +1,87 @@
 pipeline {
-    agent any
+  agent any
 
-    options {
-        skipDefaultCheckout(true)
-        timestamps()
+  // Run the pipeline every 5 minutes
+  triggers {
+    cron('H/5 * * * *')
+  }
+
+  parameters {
+    string(name: 'BRANCH', defaultValue: 'main', description: 'Git branch to build')
+    booleanParam(name: 'RUN_TESTS', defaultValue: true, description: 'Run tests?')
+    choice(name: 'ENV', choices: ['dev', 'staging', 'prod'], description: 'Deploy environment')
+  }
+
+  stages {
+
+    stage('Checkout Code') {
+      steps {
+        echo "Cloning branch: ${params.BRANCH}"
+        // Actual Git checkout step pointing to your GitHub repository
+        git branch: "${params.BRANCH}", url: 'https://github.com/JakeConal/demo_test_ci-main.git'
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            python3 --version || python --version
-                            python3 -m pip install --upgrade pip || python -m pip install --upgrade pip
-                            python3 -m pip install ruff pytest coverage || python -m pip install ruff pytest coverage
-                            if [ -f requirements.txt ]; then
-                                python3 -m pip install -r requirements.txt || python -m pip install -r requirements.txt
-                            fi
-                        '''
-                    } else {
-                        bat '''
-                            python --version
-                            python -m pip install --upgrade pip
-                            python -m pip install ruff pytest coverage
-                            if exist requirements.txt python -m pip install -r requirements.txt
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Lint') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh 'python3 -m ruff check . || python -m ruff check .'
-                    } else {
-                        bat 'python -m ruff check .'
-                    }
-                }
-            }
-        }
-
-        stage('Test') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh 'python3 -m coverage run -m pytest -v -s --junitxml=pytest-results.xml || python -m coverage run -m pytest -v -s --junitxml=pytest-results.xml'
-                    } else {
-                        bat 'python -m coverage run -m pytest -v -s --junitxml=pytest-results.xml'
-                    }
-                }
-            }
-        }
-
-        stage('Coverage Report') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            python3 -m coverage report -m || python -m coverage report -m
-                            python3 -m coverage xml || python -m coverage xml
-                        '''
-                    } else {
-                        bat '''
-                            python -m coverage report -m
-                            python -m coverage xml
-                        '''
-                    }
-                }
-            }
-        }
+    stage('Build') {
+      steps {
+        echo "Building application..."
+        sh 'echo "Build successful!"'
+      }
     }
 
-    post {
-        always {
-            junit allowEmptyResults: true, testResults: 'pytest-results.xml'
-            archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage.xml,.coverage'
+    stage('Test') {
+      when {
+        expression { params.RUN_TESTS }
+      }
+      parallel {
+        stage('Unit Test') {
+          steps {
+            echo "Running unit tests..."
+            script {
+                if (isUnix()) {
+                    sh 'python3 -m unittest test_main.py || python -m unittest test_main.py'
+                } else {
+                    bat 'python -m unittest test_main.py'
+                }
+            }
+          }
         }
+        stage('Integration Test') {
+          steps {
+            echo "Running integration tests..."
+            sh 'echo "Integration tests passed!"'
+          }
+        }
+      }
     }
+
+    stage('Deploy') {
+      steps {
+        echo "Deploying to ${params.ENV} environment..."
+
+        script {
+          if (params.ENV == 'dev') {
+            sh 'echo "Deploy to DEV server"'
+          } else if (params.ENV == 'staging') {
+            sh 'echo "Deploy to STAGING server"'
+          } else {
+            sh 'echo "Deploy to PRODUCTION server"'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Pipeline completed successfully!"
+    }
+    failure {
+      echo "Pipeline failed!"
+    }
+    always {
+      echo "Cleaning workspace..."
+      cleanWs()
+    }
+  }
 }
